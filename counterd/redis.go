@@ -24,7 +24,7 @@ type RedisClient interface {
 	ListKeys() ([]string, error)
 
 	// GetCounts returns the counts for the given keys
-	GetCounts(keys []string) (map[string]int64, error)
+	GetCounts(keys []string) ([]int64, error)
 
 	// DeleteKeys deletes a set of keys
 	DeleteKeys([]string) error
@@ -88,7 +88,7 @@ func (p *PooledClient) ListKeys() ([]string, error) {
 	return keys, nil
 }
 
-func (p *PooledClient) GetCounts(keys []string) (map[string]int64, error) {
+func (p *PooledClient) GetCounts(keys []string) ([]int64, error) {
 	// Get a connection to redis
 	c := p.pool.Get()
 	defer c.Close()
@@ -105,10 +105,10 @@ func (p *PooledClient) GetCounts(keys []string) (map[string]int64, error) {
 	rawList := raw.([]interface{})
 
 	// Parse the result
-	out := make(map[string]int64, len(keys))
-	for idx, key := range keys {
+	out := make([]int64, len(keys))
+	for idx := range keys {
 		count := rawList[idx].(int64)
-		out[key] = count
+		out[idx] = count
 	}
 	return out, nil
 }

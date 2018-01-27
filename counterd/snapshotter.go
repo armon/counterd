@@ -44,6 +44,25 @@ func (s *Snapshotter) Run() error {
 	s.logger.Info("sorting keys", "update", len(update),
 		"delete", len(delete), "ignore", len(ignore))
 
+	// Delete the older keys
+	if err := s.client.DeleteKeys(ParsedList(delete).Keys()); err != nil {
+		s.logger.Error("failed to delete keys", "error", err)
+		return err
+	}
+
+	// Get the updated counters
+	counters, err := s.client.GetCounts(ParsedList(update).Keys())
+	if err != nil {
+		s.logger.Error("failed to get counter values", "error", err)
+		return err
+	}
+	if len(counters) != len(update) {
+		s.logger.Error("length mis-match for counters")
+		return err
+	}
+	for idx := range update {
+		update[idx].Count = counters[idx]
+	}
 	return nil
 }
 
@@ -67,6 +86,17 @@ type ParsedKey struct {
 	Interval   string
 	Date       time.Time
 	Attributes map[string]string
+	Count      int64
+}
+
+type ParsedList []*ParsedKey
+
+func (l ParsedList) Keys() []string {
+	out := make([]string, 0, len(l))
+	for _, p := range l {
+		out = append(out, p.Raw)
+	}
+	return out
 }
 
 // ParseKeyList parses a list of raw keys

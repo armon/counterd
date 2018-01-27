@@ -42,14 +42,14 @@ func (m *MockRedisClient) ListKeys() ([]string, error) {
 	return out, nil
 }
 
-func (m *MockRedisClient) GetCounts(keys []string) (map[string]int64, error) {
+func (m *MockRedisClient) GetCounts(keys []string) ([]int64, error) {
 	m.Lock()
 	defer m.Unlock()
 
-	out := make(map[string]int64, len(keys))
-	for _, key := range keys {
+	out := make([]int64, len(keys))
+	for idx, key := range keys {
 		ids := m.counters[key]
-		out[key] = int64(len(ids))
+		out[idx] = int64(len(ids))
 	}
 	return out, nil
 }
