@@ -2,6 +2,7 @@ package main
 
 import (
 	"sort"
+	"strings"
 
 	"github.com/garyburd/redigo/redis"
 )
@@ -81,7 +82,7 @@ func (p *PooledClient) ListKeys() ([]string, error) {
 	// Convert the map to a flat list
 	keys := make([]string, 0, len(keyMap))
 	for key := range keyMap {
-		keys = append(keys, key)
+		keys = append(keys, strings.TrimPrefix(key, RedisKeyPrefix))
 	}
 	sort.Strings(keys)
 	return keys, nil
@@ -120,7 +121,7 @@ func (p *PooledClient) DeleteKeys(keys []string) error {
 	// Convert from string list to interface list
 	intList := make([]interface{}, len(keys))
 	for idx, key := range keys {
-		intList[idx] = key
+		intList[idx] = RedisKeyPrefix + key
 	}
 
 	// Delete all the keys
