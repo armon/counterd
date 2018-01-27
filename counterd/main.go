@@ -14,6 +14,9 @@ func main() {
 		"server": func() (cli.Command, error) {
 			return &ServerCommand{}, nil
 		},
+		"snapshot": func() (cli.Command, error) {
+			return &SnapshotCommand{}, nil
+		},
 	}
 
 	exitStatus, err := c.Run()

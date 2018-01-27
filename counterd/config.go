@@ -3,25 +3,29 @@ package main
 import "fmt"
 import "github.com/hashicorp/hcl"
 
-// ServerConfig is the configuration for the server
-type ServerConfig struct {
+// Config is the configuration for the server and snapshot comments
+type Config struct {
 	// ListenAddress is the HTTP listener address
 	ListenAddress string `hcl:"listen_address"`
 
 	// RedisAddress is the address of the redis server
 	RedisAddress string `hcl:"redis_address"`
+
+	// PGAddress is the address of the postgresql server
+	PGAddress string `hcl:"postgresql_address"`
 }
 
 // DefaultConfig returns the default configuration
-func DefaultConfig() *ServerConfig {
-	return &ServerConfig{
+func DefaultConfig() *Config {
+	return &Config{
 		ListenAddress: "127.0.0.1:8001",
 		RedisAddress:  "127.0.0.1:6379",
+		PGAddress:     "127.0.0.1:5432",
 	}
 }
 
 // ParseConfig is used to parse the configuration
-func ParseConfig(raw string) (*ServerConfig, error) {
+func ParseConfig(raw string) (*Config, error) {
 	config := DefaultConfig()
 
 	// Attempt to decode the configuration

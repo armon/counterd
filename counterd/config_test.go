@@ -18,10 +18,12 @@ func TestParseConfig_Valid(t *testing.T) {
 	input := `
 listen_address = "127.0.0.1:1234"
 redis_address = "127.0.0.1:2345"
+postgresql_address = "127.0.0.1:3456",
 	`
 
 	config, err := ParseConfig(input)
 	assert.Nil(t, err)
 	assert.Equal(t, "127.0.0.1:1234", config.ListenAddress)
 	assert.Equal(t, "127.0.0.1:2345", config.RedisAddress)
+	assert.Equal(t, "127.0.0.1:3456", config.PGAddress)
 }
