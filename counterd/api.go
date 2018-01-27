@@ -60,6 +60,7 @@ type APIHandler struct {
 	client RedisClient
 }
 
+// Ingress is used to take events and update the appropriate redis keys
 func (a *APIHandler) Ingress(w http.ResponseWriter, r *http.Request) {
 	// Verify the method
 	if r.Method != "PUT" {
@@ -87,28 +88,35 @@ func (a *APIHandler) Ingress(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// Query is used to scan across an interval date range with any
+// optional filtering applied on attributes
 func (a *APIHandler) Query(w http.ResponseWriter, r *http.Request) {
 	// Verify the method
 	if r.Method != "GET" {
 		w.WriteHeader(405)
 		return
 	}
+	// TODO
 }
 
+// Domain is used to determine the domain of attributes and values
 func (a *APIHandler) Domain(w http.ResponseWriter, r *http.Request) {
 	// Verify the method
 	if r.Method != "GET" {
 		w.WriteHeader(405)
 		return
 	}
+	// TODO
 }
 
+// Rnage is used to determine the start/end dates for an interval
 func (a *APIHandler) Range(w http.ResponseWriter, r *http.Request) {
 	// Verify the method
 	if r.Method != "GET" {
 		w.WriteHeader(405)
 		return
 	}
+	// TODO
 }
 
 // IngressRequest is input for ingress as a JSON object
