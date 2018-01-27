@@ -3,7 +3,6 @@ package main
 import (
 	"net/http/httptest"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
@@ -104,29 +103,4 @@ func TestDateIntervals(t *testing.T) {
 
 	monthFormat := "2006-01"
 	assert.Equal(t, monthFormat, out["month"])
-}
-
-type MockRedisClient struct {
-	counters map[string]map[string]struct{}
-	sync.Mutex
-}
-
-func NewMockRedisClient() *MockRedisClient {
-	return &MockRedisClient{
-		counters: make(map[string]map[string]struct{}),
-	}
-}
-
-func (m *MockRedisClient) UpdateKeys(keys []string, id string) error {
-	m.Lock()
-	defer m.Unlock()
-	for _, key := range keys {
-		vals := m.counters[key]
-		if vals == nil {
-			vals = make(map[string]struct{})
-			m.counters[key] = vals
-		}
-		vals[id] = struct{}{}
-	}
-	return nil
 }

@@ -10,7 +10,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/garyburd/redigo/redis"
 	hclog "github.com/hashicorp/go-hclog"
 )
 
@@ -27,32 +26,6 @@ const (
 	WeekInterval
 	MonthInterval
 )
-
-// RedisClient is used to abstract the client for testing
-type RedisClient interface {
-	UpdateKeys(keys []string, id string) error
-}
-
-// PooledClient uses a connection pool for redis
-type PooledClient struct {
-	pool *redis.Pool
-}
-
-func (p *PooledClient) UpdateKeys(keys []string, id string) error {
-	// Get a connection to redis
-	c := p.pool.Get()
-	defer c.Close()
-
-	// Increment all the keys in a transaction
-	c.Send("MULTI")
-	for key := range keys {
-		c.Send("PFADD", key, id)
-	}
-	if _, err := c.Do("EXEC"); err != nil {
-		return err
-	}
-	return nil
-}
 
 // APIHandler implements the HTTP API endpoints
 type APIHandler struct {
