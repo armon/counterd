@@ -98,7 +98,7 @@ func TestDateIntervals(t *testing.T) {
 	dayFormat := "2006-01-09"
 	assert.Equal(t, dayFormat, out["day"])
 
-	weekFormat := "2006-02"
+	weekFormat := "2006-01-08"
 	assert.Equal(t, weekFormat, out["week"])
 
 	monthFormat := "2006-01"

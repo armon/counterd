@@ -196,8 +196,9 @@ func DateIntervals(intervals int, date time.Time) map[string]string {
 		out["day"] = date.Format("2006-01-02")
 	}
 	if intervals&WeekInterval != 0 {
-		year, week := date.ISOWeek()
-		out["week"] = fmt.Sprintf("%d-%02d", year, week)
+		weekday := date.Weekday()
+		aligned := date.Add(-1 * 24 * time.Hour * time.Duration(weekday))
+		out["week"] = aligned.Format("2006-01-02")
 	}
 	if intervals&MonthInterval != 0 {
 		out["month"] = date.Format("2006-01")
