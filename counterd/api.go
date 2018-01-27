@@ -115,7 +115,7 @@ func (r *IngressRequest) Validate() error {
 
 	// Fill in the date if missing
 	if r.Date.IsZero() {
-		r.Date = time.Now()
+		r.Date = time.Now().UTC()
 	}
 
 	// Inject the null attribute if necessary

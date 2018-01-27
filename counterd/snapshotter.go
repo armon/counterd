@@ -25,9 +25,40 @@ func (s *Snapshotter) Run() error {
 	}
 
 	// Parse the keys into a structured form
-	_, _ = ParseKeyList(keys)
+	parsed, invalid := ParseKeyList(keys)
+	if len(invalid) > 0 {
+		s.logger.Warn("found invalid keys", "keys", invalid)
+	}
+	s.logger.Debug(fmt.Sprintf("found %d valid keys", len(parsed)))
+
+	// Determine the filter and delete thresholds
+	now := time.Now().UTC()
+	updateThreshold := now.Add(-1 * s.config.Snapshot.UpdateThreshold)
+	deleteThreshold := now.Add(-1 * s.config.Snapshot.DeleteThreshold)
+	s.logger.Info("determining thresholds", "update", updateThreshold,
+		"delete", deleteThreshold)
+
+	// Filter the keys
+	update, ignore, delete := FilterKeys(parsed, updateThreshold,
+		deleteThreshold)
+	s.logger.Info("sorting keys", "update", len(update),
+		"delete", len(delete), "ignore", len(ignore))
 
 	return nil
+}
+
+// FilterKeys sorts the input keys into a set to be updated, deleted, or ignored
+func FilterKeys(keys []*ParsedKey, updateThreshold, deleteThreshold time.Time) (update, ignore, delete []*ParsedKey) {
+	for _, key := range keys {
+		if key.Date.Before(deleteThreshold) {
+			delete = append(delete, key)
+		} else if key.Date.After(updateThreshold) {
+			update = append(update, key)
+		} else {
+			ignore = append(ignore, key)
+		}
+	}
+	return
 }
 
 // ParsedKey represents a raw key

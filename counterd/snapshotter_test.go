@@ -7,6 +7,21 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+func TestFilterKeys(t *testing.T) {
+	p1, _ := ParseKey("day:2017-01-18:foo:bar")
+	p2, _ := ParseKey("day:2017-01-10:foo:bar")
+	p3, _ := ParseKey("day:2017-01-01:foo:bar")
+
+	inp := []*ParsedKey{p1, p2, p3}
+	updateThres := time.Date(2017, 1, 17, 0, 0, 0, 0, time.UTC)
+	deleteThres := time.Date(2017, 1, 9, 0, 0, 0, 0, time.UTC)
+	update, ignore, delete := FilterKeys(inp, updateThres, deleteThres)
+
+	assert.Contains(t, update, p1)
+	assert.Contains(t, ignore, p2)
+	assert.Contains(t, delete, p3)
+}
+
 func TestParseKeyList(t *testing.T) {
 	input := []string{
 		"day:2017-01-18:foo:bar",
