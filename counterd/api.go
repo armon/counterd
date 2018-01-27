@@ -1,10 +1,13 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+	"sort"
+	"strings"
 	"time"
 
 	hclog "github.com/hashicorp/go-hclog"
@@ -13,6 +16,15 @@ import (
 const (
 	// NullAttribute is automatically added to an event if no other attributs are provided
 	NullAttribute = "null"
+
+	// KeySeperator is used to segment K/V pairs and cannot be used in an attribute key or value
+	KeySeperator = ":"
+)
+
+const (
+	DayInterval = 1 << iota
+	WeekInterval
+	MonthInterval
 )
 
 // APIHandler implements the HTTP API endpoints
@@ -91,6 +103,12 @@ func (r *IngressRequest) Validate() error {
 		r.Attributes = map[string]string{
 			NullAttribute: NullAttribute,
 		}
+	} else {
+		for key, value := range r.Attributes {
+			if strings.Contains(key, KeySeperator) || strings.Contains(value, KeySeperator) {
+				return fmt.Errorf("invalid use of colon in attribute key/value")
+			}
+		}
 	}
 	return nil
 }
@@ -111,4 +129,58 @@ func ParseIngressRequest(r io.Reader) (*IngressRequest, error) {
 
 	// Return the request
 	return &req, nil
+}
+
+// RequestCounterKeys returns all the keys that should be incremented for the request
+// Key structure is <interval>:<date>:<attr1>:<val1>_<attr2>:...
+func RequestCounterKeys(intervals map[string]string, r *IngressRequest) []string {
+	// Put the keys into a sorted order
+	keys := make([]string, 0, len(r.Attributes))
+	for key := range r.Attributes {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+
+	// Build the suffix
+	var buf bytes.Buffer
+	for idx, key := range keys {
+		val := r.Attributes[key]
+		if idx != 0 {
+			buf.WriteString(KeySeperator)
+		}
+		buf.WriteString(key)
+		buf.WriteString(KeySeperator)
+		buf.WriteString(val)
+	}
+	suffix := buf.String()
+
+	// Construct key per interval
+	var out []string
+	for interval, date := range intervals {
+		var buf bytes.Buffer
+		buf.WriteString(interval)
+		buf.WriteString(KeySeperator)
+		buf.WriteString(date)
+		buf.WriteString(KeySeperator)
+		buf.WriteString(suffix)
+		out = append(out, buf.String())
+	}
+	return out
+}
+
+// DateIntervals returns the formatted intervals for a given
+// date and set of interval values
+func DateIntervals(intervals int, date time.Time) map[string]string {
+	out := make(map[string]string)
+	if intervals&DayInterval != 0 {
+		out["day"] = date.Format("2006-01-02")
+	}
+	if intervals&WeekInterval != 0 {
+		year, week := date.ISOWeek()
+		out["week"] = fmt.Sprintf("%d-%02d", year, week)
+	}
+	if intervals&MonthInterval != 0 {
+		out["month"] = date.Format("2006-01")
+	}
+	return out
 }
