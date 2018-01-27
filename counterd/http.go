@@ -1,18 +1,9 @@
 package main
 
-import (
-	"net/http"
-
-	hclog "github.com/hashicorp/go-hclog"
-)
+import "net/http"
 
 // NewHTTPHandler creates a new router to all the endpoints
-func NewHTTPHandler() http.Handler {
-	// Setup the endpoint handlers
-	api := &APIHandler{
-		logger: hclog.Default().Named("api"),
-	}
-
+func NewHTTPHandler(api *APIHandler) http.Handler {
 	// Create a muxer with all the routes
 	mux := http.NewServeMux()
 	mux.HandleFunc("/v1/ingress", api.Ingress)

@@ -57,8 +57,13 @@ func (s *ServerCommand) Run(args []string) int {
 	}
 	hclog.Default().Info("Listener started", "address", config.ListenAddress)
 
+	// Setup the endpoint handlers
+	api := &APIHandler{
+		logger: hclog.Default().Named("api"),
+	}
+
 	// Setup the HTTP handler
-	mux := NewHTTPHandler()
+	mux := NewHTTPHandler(api)
 
 	// Start the HTTP server
 	if err := http.Serve(ln, mux); err != nil {

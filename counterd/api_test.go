@@ -1,12 +1,39 @@
 package main
 
 import (
+	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
+	hclog "github.com/hashicorp/go-hclog"
 	"github.com/stretchr/testify/assert"
 )
+
+func TestAPI_Ingress(t *testing.T) {
+	input := `{"id": "1234", "date": "2009-11-10T23:00:00Z", "attributes": {"foo": "bar"}}`
+	req := httptest.NewRequest("PUT", "/v1/ingress", strings.NewReader(input))
+	resp := httptest.NewRecorder()
+
+	mock := NewMockRedisClient()
+	api := &APIHandler{
+		logger: hclog.Default().Named("api"),
+		client: mock,
+	}
+
+	mux := NewHTTPHandler(api)
+	mux.ServeHTTP(resp, req)
+
+	// Assert a 200 OK
+	assert.Equal(t, 200, resp.Result().StatusCode)
+
+	// Assert we updated some keys
+	dayCounter := "day:2009-11-10:foo:bar"
+	assert.Contains(t, mock.counters, dayCounter)
+	ids := mock.counters[dayCounter]
+	assert.Contains(t, ids, "1234")
+}
 
 func TestIngressRequest_Validate(t *testing.T) {
 	// Create a blank request
@@ -77,4 +104,29 @@ func TestDateIntervals(t *testing.T) {
 
 	monthFormat := "2006-01"
 	assert.Equal(t, monthFormat, out["month"])
+}
+
+type MockRedisClient struct {
+	counters map[string]map[string]struct{}
+	sync.Mutex
+}
+
+func NewMockRedisClient() *MockRedisClient {
+	return &MockRedisClient{
+		counters: make(map[string]map[string]struct{}),
+	}
+}
+
+func (m *MockRedisClient) UpdateKeys(keys []string, id string) error {
+	m.Lock()
+	defer m.Unlock()
+	for _, key := range keys {
+		vals := m.counters[key]
+		if vals == nil {
+			vals = make(map[string]struct{})
+			m.counters[key] = vals
+		}
+		vals[id] = struct{}{}
+	}
+	return nil
 }

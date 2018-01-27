@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/garyburd/redigo/redis"
 	hclog "github.com/hashicorp/go-hclog"
 )
 
@@ -27,9 +28,36 @@ const (
 	MonthInterval
 )
 
+// RedisClient is used to abstract the client for testing
+type RedisClient interface {
+	UpdateKeys(keys []string, id string) error
+}
+
+// PooledClient uses a connection pool for redis
+type PooledClient struct {
+	pool *redis.Pool
+}
+
+func (p *PooledClient) UpdateKeys(keys []string, id string) error {
+	// Get a connection to redis
+	c := p.pool.Get()
+	defer c.Close()
+
+	// Increment all the keys in a transaction
+	c.Send("MULTI")
+	for key := range keys {
+		c.Send("PFADD", key, id)
+	}
+	if _, err := c.Do("EXEC"); err != nil {
+		return err
+	}
+	return nil
+}
+
 // APIHandler implements the HTTP API endpoints
 type APIHandler struct {
 	logger hclog.Logger
+	client RedisClient
 }
 
 func (a *APIHandler) Ingress(w http.ResponseWriter, r *http.Request) {
@@ -47,6 +75,16 @@ func (a *APIHandler) Ingress(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a.logger.Debug("Ingress event", "id", req.ID, "attributes", req.Attributes)
+
+	// Generate the keys
+	intervals := DateIntervals(DayInterval|WeekInterval|MonthInterval,
+		req.Date)
+	keys := RequestCounterKeys(intervals, req)
+
+	// Update the keys
+	if err := a.client.UpdateKeys(keys, req.ID); err != nil {
+		a.logger.Error("failed to update redis", "error", err)
+	}
 }
 
 func (a *APIHandler) Query(w http.ResponseWriter, r *http.Request) {
@@ -56,6 +94,7 @@ func (a *APIHandler) Query(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 }
+
 func (a *APIHandler) Domain(w http.ResponseWriter, r *http.Request) {
 	// Verify the method
 	if r.Method != "GET" {
