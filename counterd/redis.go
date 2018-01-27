@@ -22,6 +22,9 @@ type RedisClient interface {
 	// ListKeys returns all the keys in sorted order
 	ListKeys() ([]string, error)
 
+	// GetCounts returns the counts for the given keys
+	GetCounts(keys []string) (map[string]int64, error)
+
 	// DeleteKeys deletes a set of keys
 	DeleteKeys([]string) error
 }
@@ -82,6 +85,31 @@ func (p *PooledClient) ListKeys() ([]string, error) {
 	}
 	sort.Strings(keys)
 	return keys, nil
+}
+
+func (p *PooledClient) GetCounts(keys []string) (map[string]int64, error) {
+	// Get a connection to redis
+	c := p.pool.Get()
+	defer c.Close()
+
+	// Count all the keys in a transaction
+	c.Send("MULTI")
+	for _, key := range keys {
+		c.Send("PFCOUNT", RedisKeyPrefix+key)
+	}
+	raw, err := c.Do("EXEC")
+	if err != nil {
+		return nil, err
+	}
+	rawList := raw.([]interface{})
+
+	// Parse the result
+	out := make(map[string]int64, len(keys))
+	for idx, key := range keys {
+		count := rawList[idx].(int64)
+		out[key] = count
+	}
+	return out, nil
 }
 
 func (p *PooledClient) DeleteKeys(keys []string) error {
