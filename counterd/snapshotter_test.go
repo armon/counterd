@@ -4,8 +4,68 @@ import (
 	"testing"
 	"time"
 
+	hclog "github.com/hashicorp/go-hclog"
 	"github.com/stretchr/testify/assert"
 )
+
+func TestSnapshotter(t *testing.T) {
+	conf := DefaultConfig()
+	conf.Snapshot.DeleteThreshold = 14 * 24 * time.Hour
+	redis := NewMockRedisClient()
+	db := NewMockDatabaseClient()
+
+	snap := &Snapshotter{
+		config: conf,
+		logger: hclog.Default(),
+		client: redis,
+		db:     db,
+	}
+
+	// Create some counter values
+	keys := []string{
+		"day:2017-01-18:foo:bar",
+		"day:2017-01-10:foo:baz",
+		"day:2017-01-01:zip:zap",
+	}
+	assert.Nil(t, redis.UpdateKeys(keys, "1234"))
+
+	// Run the snapshot
+	runTime := time.Date(2017, 1, 18, 12, 0, 0, 0, time.UTC)
+	err := snap.Run(runTime)
+	assert.Nil(t, err)
+
+	// Check that the oldest key is deleted
+	counters, _ := redis.ListKeys()
+	assert.Equal(t, 2, len(counters))
+	assert.NotContains(t, counters, "day:2017-01-01:zip:zap")
+
+	// Check that the newest counter is updated
+	assert.Equal(t, 1, len(db.counters))
+
+	// Check that the domain is updated
+	domain := map[string]map[string]struct{}{
+		"foo": map[string]struct{}{
+			"bar": struct{}{},
+		},
+	}
+	assert.Equal(t, domain, db.domain)
+}
+
+func TestCollectDomain(t *testing.T) {
+	p1, _ := ParseKey("day:2017-01-18:foo:bar")
+	p2, _ := ParseKey("day:2017-01-10:foo:baz")
+	p3, _ := ParseKey("day:2017-01-01:zip:zap")
+
+	inp := []*ParsedKey{p1, p2, p3}
+	attributes := CollectDomain(inp)
+
+	assert.Contains(t, attributes, "foo")
+	assert.Contains(t, attributes["foo"], "bar")
+	assert.Contains(t, attributes["foo"], "baz")
+
+	assert.Contains(t, attributes, "zip")
+	assert.Contains(t, attributes["zip"], "zap")
+}
 
 func TestFilterKeys(t *testing.T) {
 	p1, _ := ParseKey("day:2017-01-18:foo:bar")

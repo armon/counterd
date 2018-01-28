@@ -13,10 +13,13 @@ type Snapshotter struct {
 	config *Config
 	logger hclog.Logger
 	client RedisClient
+	db     DatabaseClient
 }
 
 // Run is used to both snapshot new data and delete old data
-func (s *Snapshotter) Run() error {
+func (s *Snapshotter) Run(now time.Time) error {
+	start := time.Now()
+
 	// Get the list of keys
 	keys, err := s.client.ListKeys()
 	if err != nil {
@@ -32,7 +35,6 @@ func (s *Snapshotter) Run() error {
 	s.logger.Debug(fmt.Sprintf("found %d valid keys", len(parsed)))
 
 	// Determine the filter and delete thresholds
-	now := time.Now().UTC()
 	updateThreshold := now.Add(-1 * s.config.Snapshot.UpdateThreshold)
 	deleteThreshold := now.Add(-1 * s.config.Snapshot.DeleteThreshold)
 	s.logger.Info("determining thresholds", "update", updateThreshold,
@@ -63,7 +65,44 @@ func (s *Snapshotter) Run() error {
 	for idx := range update {
 		update[idx].Count = counters[idx]
 	}
+
+	// Update all the DB counters
+	for _, c := range update {
+		if err := s.db.UpsertCounter(c.Interval, c.Date, c.Attributes,
+			c.Count); err != nil {
+			s.logger.Error("failed to update counter value", "counter", c.Raw, "error", err)
+			return err
+		}
+	}
+
+	// Collect all the domain attributes
+	attributes := CollectDomain(update)
+	if err := s.db.UpsertDomain(attributes); err != nil {
+		s.logger.Error("failed to update domain values", "error", err)
+		return err
+	}
+
+	// Done!
+	s.logger.Info("snapshot complete", "duration", time.Since(start))
 	return nil
+}
+
+// CollectDomain is used to collect all the domain attribute/values
+func CollectDomain(keys []*ParsedKey) map[string]map[string]struct{} {
+	out := make(map[string]map[string]struct{})
+	for _, key := range keys {
+		for k, v := range key.Attributes {
+			values := out[k]
+			if values == nil {
+				values = make(map[string]struct{})
+				out[k] = values
+			}
+			if _, ok := values[v]; !ok {
+				values[v] = struct{}{}
+			}
+		}
+	}
+	return out
 }
 
 // FilterKeys sorts the input keys into a set to be updated, deleted, or ignored
@@ -71,7 +110,23 @@ func FilterKeys(keys []*ParsedKey, updateThreshold, deleteThreshold time.Time) (
 	for _, key := range keys {
 		if key.Date.Before(deleteThreshold) {
 			delete = append(delete, key)
-		} else if key.Date.After(updateThreshold) {
+			continue
+		}
+
+		// Determine the appropriate delta based on the interval
+		var delta time.Duration
+		switch key.Interval {
+		case "day":
+			delta = 24 * time.Hour
+		case "week":
+			delta = 7 * 24 * time.Hour
+		case "month":
+			delta = 31 * 24 * time.Hour
+		default:
+			panic(fmt.Sprintf("invalid interval %q", key.Interval))
+		}
+
+		if key.Date.Add(delta).After(updateThreshold) {
 			update = append(update, key)
 		} else {
 			ignore = append(ignore, key)

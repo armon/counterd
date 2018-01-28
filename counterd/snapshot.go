@@ -64,8 +64,8 @@ func (s *SnapshotCommand) Run(args []string) int {
 		client: &PooledClient{pool},
 	}
 
-	// Run the snapshotter
-	if err := snap.Run(); err != nil {
+	// Run the snapshotter now
+	if err := snap.Run(time.Now().UTC()); err != nil {
 		hclog.Default().Error("Failed to snapshot", "error", err)
 		return 1
 	}
