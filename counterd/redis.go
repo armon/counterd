@@ -3,6 +3,7 @@ package main
 import (
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/garyburd/redigo/redis"
 )
@@ -35,6 +36,19 @@ type PooledClient struct {
 	pool *redis.Pool
 }
 
+// Setup the redis pool
+func NewPooledClient(addr string) (*PooledClient, error) {
+	pool := &redis.Pool{
+		MaxIdle:     3,
+		IdleTimeout: 30 * time.Second,
+		Dial:        func() (redis.Conn, error) { return redis.Dial("tcp", addr) },
+	}
+	pc := &PooledClient{
+		pool: pool,
+	}
+	return pc, nil
+}
+
 func (p *PooledClient) UpdateKeys(keys []string, id string) error {
 	// Get a connection to redis
 	c := p.pool.Get()
@@ -60,20 +74,22 @@ func (p *PooledClient) ListKeys() ([]string, error) {
 	keyMap := make(map[string]struct{})
 	var cursor int64 = 0
 	for {
-		raw, err := c.Do("SCAN", cursor, "MATCH", RedisKeyPrefix+"*", "COUNT", ScanCount)
+		respSet, err := redis.Values(c.Do("SCAN", cursor, "MATCH", RedisKeyPrefix+"*", "COUNT", ScanCount))
 		if err != nil {
 			return nil, err
 		}
-		respSet := raw.([]interface{})
 
 		// Scan all the keys
 		keys := respSet[1].([]interface{})
 		for _, keyRaw := range keys {
-			keyMap[keyRaw.(string)] = struct{}{}
+			keyMap[string(keyRaw.([]byte))] = struct{}{}
 		}
 
 		// Update the cursor
-		cursor = respSet[0].(int64)
+		cursor, err = redis.Int64(respSet[0], nil)
+		if err != nil {
+			return nil, err
+		}
 		if cursor == 0 {
 			break
 		}

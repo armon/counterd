@@ -6,9 +6,7 @@ import (
 	"net"
 	"net/http"
 	"strings"
-	"time"
 
-	"github.com/garyburd/redigo/redis"
 	hclog "github.com/hashicorp/go-hclog"
 )
 
@@ -60,16 +58,16 @@ func (s *ServerCommand) Run(args []string) int {
 	hclog.Default().Info("Listener started", "address", config.ListenAddress)
 
 	// Setup the redis pool
-	pool := &redis.Pool{
-		MaxIdle:     3,
-		IdleTimeout: 30 * time.Second,
-		Dial:        func() (redis.Conn, error) { return redis.Dial("tcp", config.RedisAddress) },
+	client, err := NewPooledClient(config.RedisAddress)
+	if err != nil {
+		hclog.Default().Error("Failed to setup redis connection", "error", err)
+		return 1
 	}
 
 	// Setup the endpoint handlers
 	api := &APIHandler{
 		logger: hclog.Default().Named("api"),
-		client: &PooledClient{pool},
+		client: client,
 	}
 
 	// Setup the HTTP handler

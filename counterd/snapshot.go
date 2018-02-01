@@ -6,7 +6,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/garyburd/redigo/redis"
 	hclog "github.com/hashicorp/go-hclog"
 )
 
@@ -51,17 +50,17 @@ func (s *SnapshotCommand) Run(args []string) int {
 	hclog.Default().Info("Connecting to postgresql", "addr", config.PGAddress)
 
 	// Setup the redis pool
-	pool := &redis.Pool{
-		MaxIdle:     3,
-		IdleTimeout: 30 * time.Second,
-		Dial:        func() (redis.Conn, error) { return redis.Dial("tcp", config.RedisAddress) },
+	client, err := NewPooledClient(config.RedisAddress)
+	if err != nil {
+		hclog.Default().Error("Failed to setup redis connection", "error", err)
+		return 1
 	}
 
 	// Create the snapshotter
 	snap := &Snapshotter{
 		config: config,
 		logger: hclog.Default().Named("snapshotter"),
-		client: &PooledClient{pool},
+		client: client,
 	}
 
 	// Run the snapshotter now

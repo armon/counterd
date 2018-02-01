@@ -1,8 +1,12 @@
 package main
 
 import (
+	"os"
 	"sort"
 	"sync"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 type MockRedisClient struct {
@@ -61,4 +65,48 @@ func (m *MockRedisClient) DeleteKeys(keys []string) error {
 		delete(m.counters, key)
 	}
 	return nil
+}
+
+// IsReidsInteg checks for the INTEG and REDIS_ADDR env vars
+func IsRedisInteg() (string, bool) {
+	_, ok := os.LookupEnv("INTEG")
+	if !ok {
+		return "", false
+	}
+	redisAddr, ok := os.LookupEnv("REDIS_ADDR")
+	return redisAddr, ok
+}
+
+func TestRedisInteg(t *testing.T) {
+	redisAddr, integ := IsRedisInteg()
+	if !integ {
+		t.SkipNow()
+	}
+
+	client, err := NewPooledClient(redisAddr)
+	assert.Nil(t, err)
+
+	// Update the keys
+	keys := []string{"bar", "baz", "foo"}
+	assert.Nil(t, client.UpdateKeys(keys, "1234"))
+	assert.Nil(t, client.UpdateKeys(keys, "2345"))
+
+	// Check the keys exist
+	out, err := client.ListKeys()
+	assert.Nil(t, err)
+	assert.Equal(t, keys, out)
+
+	// Verify the counts
+	counts, err := client.GetCounts(keys)
+	assert.Nil(t, err)
+	expect := []int64{2, 2, 2}
+	assert.Equal(t, expect, counts)
+
+	// Delete all the keys
+	assert.Nil(t, client.DeleteKeys(keys))
+
+	// Ensure there are no keys
+	out, err = client.ListKeys()
+	assert.Nil(t, err)
+	assert.Equal(t, []string{}, out)
 }
