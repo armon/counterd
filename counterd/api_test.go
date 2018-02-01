@@ -46,7 +46,7 @@ func TestAPI_Ingress_Auth(t *testing.T) {
 }
 
 func TestAPI_Ingress(t *testing.T) {
-	input := `{"id": "1234", "date": "2009-11-10T23:00:00Z", "attributes": {"foo": "bar"}}`
+	input := `{"id": "1234", "date": "2009-11-10T23:00:00Z", "attributes": {"foo": "bar", "zoo": "zip"}}`
 	req := httptest.NewRequest("PUT", "/v1/ingress", strings.NewReader(input))
 	resp := httptest.NewRecorder()
 
@@ -54,6 +54,9 @@ func TestAPI_Ingress(t *testing.T) {
 	api := &APIHandler{
 		logger: hclog.Default().Named("api"),
 		client: mock,
+		attrConfig: &AttributeConfig{
+			Blacklist: []string{"zoo"},
+		},
 	}
 
 	mux := NewHTTPHandler(api, nil)
@@ -83,6 +86,36 @@ func TestIngressRequest_Validate(t *testing.T) {
 
 	// Check that we have the null attribute
 	assert.Contains(t, r.Attributes, NullAttribute)
+}
+
+func TestIngressRequest_FilterWhitelist(t *testing.T) {
+	input := `{"id": "1234", "date": "2009-11-10T23:00:00Z", "attributes": {"foo": "bar", "zoo": "zip"}}`
+	req, err := ParseIngressRequest(strings.NewReader(input))
+	assert.Nil(t, err)
+	assert.Equal(t, "1234", req.ID)
+
+	config := &AttributeConfig{
+		Whitelist: []string{"foo"},
+	}
+	req.Filter(config)
+
+	assert.Contains(t, req.Attributes, "foo")
+	assert.NotContains(t, req.Attributes, "zoo")
+}
+
+func TestIngressRequest_FilterBlacklist(t *testing.T) {
+	input := `{"id": "1234", "date": "2009-11-10T23:00:00Z", "attributes": {"foo": "bar", "zoo": "zip"}}`
+	req, err := ParseIngressRequest(strings.NewReader(input))
+	assert.Nil(t, err)
+	assert.Equal(t, "1234", req.ID)
+
+	config := &AttributeConfig{
+		Blacklist: []string{"foo"},
+	}
+	req.Filter(config)
+
+	assert.NotContains(t, req.Attributes, "foo")
+	assert.Contains(t, req.Attributes, "zoo")
 }
 
 func TestIngressRequest_Parse(t *testing.T) {

@@ -29,9 +29,10 @@ const (
 
 // APIHandler implements the HTTP API endpoints
 type APIHandler struct {
-	logger hclog.Logger
-	client RedisClient
-	db     DatabaseClient
+	logger     hclog.Logger
+	client     RedisClient
+	db         DatabaseClient
+	attrConfig *AttributeConfig
 }
 
 // Ingress is used to take events and update the appropriate redis keys
@@ -50,6 +51,9 @@ func (a *APIHandler) Ingress(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a.logger.Debug("Ingress event", "id", req.ID, "attributes", req.Attributes)
+
+	// Filter the request before generating keys
+	req.Filter(a.attrConfig)
 
 	// Generate the keys
 	intervals := DateIntervals(DayInterval|WeekInterval|MonthInterval,
@@ -132,6 +136,32 @@ func (r *IngressRequest) Validate() error {
 		}
 	}
 	return nil
+}
+
+// Filter is used to filter the attributes based on the configuration.
+// Whitelist takes precedence when provided. The input set must be sorted.
+func (r *IngressRequest) Filter(config *AttributeConfig) {
+	// Skip when there is no config
+	if config == nil {
+		return
+	}
+
+	// Apply the whitelist first
+	if len(config.Whitelist) > 0 {
+		for key := range r.Attributes {
+			idx := sort.SearchStrings(config.Whitelist, key)
+			if idx >= len(config.Whitelist) || config.Whitelist[idx] != key {
+				delete(r.Attributes, key)
+			}
+		}
+	}
+
+	// Apply the blacklist
+	if len(config.Blacklist) > 0 {
+		for _, key := range config.Blacklist {
+			delete(r.Attributes, key)
+		}
+	}
 }
 
 // ParseIngress is used to parse an ingress request from a reader

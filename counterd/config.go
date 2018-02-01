@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"sort"
 	"time"
 
 	"github.com/hashicorp/hcl"
@@ -108,6 +109,14 @@ func ParseConfig(raw string) (*Config, error) {
 			return nil, fmt.Errorf("failed to parse duration: %v", err)
 		}
 		config.Snapshot.DeleteThreshold = dur
+	}
+
+	// Sort the attribute whitelist and blacklist
+	if config.Attributes != nil && config.Attributes.Whitelist != nil {
+		sort.Strings(config.Attributes.Whitelist)
+	}
+	if config.Attributes != nil && config.Attributes.Blacklist != nil {
+		sort.Strings(config.Attributes.Blacklist)
 	}
 	return config, nil
 }

@@ -110,9 +110,10 @@ func (s *ServerCommand) Run(args []string) int {
 
 	// Setup the endpoint handlers
 	api := &APIHandler{
-		logger: hclog.Default().Named("api"),
-		client: client,
-		db:     pg,
+		logger:     hclog.Default().Named("api"),
+		client:     client,
+		db:         pg,
+		attrConfig: config.Attributes,
 	}
 
 	// Setup the HTTP handler

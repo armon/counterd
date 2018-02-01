@@ -31,7 +31,7 @@ auth {
 }
 attributes {
 	whitelist = ["name", "color"]
-	blacklist = ["ip"]
+	blacklist = ["src", "ip"]
 }
 	`
 
@@ -49,8 +49,9 @@ attributes {
 	tokens := []string{"1234", "2345"}
 	assert.Equal(t, tokens, config.Auth.Tokens)
 
-	white := []string{"name", "color"}
+	// Expect the lists to be sorted
+	white := []string{"color", "name"}
 	assert.Equal(t, white, config.Attributes.Whitelist)
-	black := []string{"ip"}
+	black := []string{"ip", "src"}
 	assert.Equal(t, black, config.Attributes.Blacklist)
 }
