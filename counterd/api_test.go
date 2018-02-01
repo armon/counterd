@@ -10,6 +10,41 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+func TestAPI_Ingress_Auth(t *testing.T) {
+	input := `{"id": "1234", "date": "2009-11-10T23:00:00Z", "attributes": {"foo": "bar"}}`
+	req := httptest.NewRequest("PUT", "/v1/ingress", strings.NewReader(input))
+
+	mock := NewMockRedisClient()
+	api := &APIHandler{
+		logger: hclog.Default().Named("api"),
+		client: mock,
+	}
+
+	conf := DefaultConfig()
+	conf.Auth.Required = true
+	conf.Auth.Tokens = []string{"1234", "2345"}
+	mux := NewHTTPHandler(api, conf.Auth)
+	resp := httptest.NewRecorder()
+	mux.ServeHTTP(resp, req)
+
+	// Assert a 403 DeniedOK
+	assert.Equal(t, 403, resp.Result().StatusCode)
+
+	// Provide an auth header
+	req.Header.Set("Authorization", "Bearer 2345")
+	resp = httptest.NewRecorder()
+	mux.ServeHTTP(resp, req)
+
+	// Assert a 200 OK
+	assert.Equal(t, 200, resp.Result().StatusCode)
+
+	// Assert we updated some keys
+	dayCounter := "day:2009-11-10:foo:bar"
+	assert.Contains(t, mock.counters, dayCounter)
+	ids := mock.counters[dayCounter]
+	assert.Contains(t, ids, "1234")
+}
+
 func TestAPI_Ingress(t *testing.T) {
 	input := `{"id": "1234", "date": "2009-11-10T23:00:00Z", "attributes": {"foo": "bar"}}`
 	req := httptest.NewRequest("PUT", "/v1/ingress", strings.NewReader(input))
@@ -21,7 +56,7 @@ func TestAPI_Ingress(t *testing.T) {
 		client: mock,
 	}
 
-	mux := NewHTTPHandler(api)
+	mux := NewHTTPHandler(api, nil)
 	mux.ServeHTTP(resp, req)
 
 	// Assert a 200 OK

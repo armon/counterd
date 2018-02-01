@@ -20,6 +20,30 @@ type Config struct {
 
 	// Snapshot has the snapshot specific configuration
 	Snapshot *SnapshotConfig
+
+	// Auth is used to hold authentication configuration
+	Auth *AuthConfig
+
+	// Attributes is used to configure filtering of attributes
+	Attributes *AttributeConfig
+}
+
+// AttributeConfig is used to configure attribute handlign
+type AttributeConfig struct {
+	// Whitelist is used to restrict the allowed set of attributes
+	Whitelist []string
+
+	// Blacklist is used to filter out unwanted attributes
+	Blacklist []string
+}
+
+// AuthConfig holds the authentication configuration
+type AuthConfig struct {
+	// Required is used to toggle if we verify authentication
+	Required bool `hcl:"required"`
+
+	// Tokens are the allowed bearer tokens via Authorization header
+	Tokens []string `hcl:"tokens"`
 }
 
 // SnapshotConfig has snapshotting configuration
@@ -50,6 +74,14 @@ func DefaultConfig() *Config {
 		Snapshot: &SnapshotConfig{
 			UpdateThreshold: 3 * time.Hour,
 			DeleteThreshold: 3 * 30 * 24 * time.Hour,
+		},
+		Auth: &AuthConfig{
+			Required: false,
+			Tokens:   []string{},
+		},
+		Attributes: &AttributeConfig{
+			Whitelist: []string{},
+			Blacklist: []string{},
 		},
 	}
 }

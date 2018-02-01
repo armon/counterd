@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/subtle"
 	"fmt"
 	"io/ioutil"
 	"net"
@@ -115,7 +116,7 @@ func (s *ServerCommand) Run(args []string) int {
 	}
 
 	// Setup the HTTP handler
-	mux := NewHTTPHandler(api)
+	mux := NewHTTPHandler(api, config.Auth)
 
 	// Start the HTTP server
 	if err := http.Serve(ln, mux); err != nil {
@@ -125,7 +126,7 @@ func (s *ServerCommand) Run(args []string) int {
 }
 
 // NewHTTPHandler creates a new router to all the endpoints
-func NewHTTPHandler(api *APIHandler) http.Handler {
+func NewHTTPHandler(api *APIHandler, auth *AuthConfig) http.Handler {
 	// Create a muxer with all the routes
 	mux := http.NewServeMux()
 	mux.HandleFunc("/v1/ingress", api.Ingress)
@@ -134,7 +135,43 @@ func NewHTTPHandler(api *APIHandler) http.Handler {
 	mux.HandleFunc("/v1/range/", api.Range)
 	mux.HandleFunc("/ui", nil)
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		http.Redirect(w, r, "/ui", 301)
+		http.Redirect(w, r, "/ui", http.StatusMovedPermanently)
 	})
+
+	// Check if auth is enabled, wrap the muxer to enforce
+	if auth != nil && auth.Required {
+		enforce := func(w http.ResponseWriter, r *http.Request) {
+			// Check for the Auth header
+			authHeader := r.Header.Get("Authorization")
+			if authHeader == "" {
+				w.WriteHeader(http.StatusForbidden)
+				return
+			}
+
+			// Parse the format
+			const prefix = "Bearer "
+			if !strings.HasPrefix(authHeader, prefix) {
+				w.WriteHeader(http.StatusForbidden)
+				return
+			}
+			token := authHeader[len(prefix):]
+
+			// Check for the token, making sure not to leak timing information
+			pass := false
+			for _, t := range auth.Tokens {
+				if subtle.ConstantTimeCompare([]byte(t), []byte(token)) == 1 {
+					pass = true
+				}
+			}
+
+			// Route to the muxer if we found a matching token
+			if pass {
+				mux.ServeHTTP(w, r)
+			} else {
+				w.WriteHeader(http.StatusForbidden)
+			}
+		}
+		return http.HandlerFunc(enforce)
+	}
 	return mux
 }
