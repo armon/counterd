@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"time"
 
 	hclog "github.com/hashicorp/go-hclog"
 	lru "github.com/hashicorp/golang-lru"
@@ -15,8 +14,11 @@ const (
 	// TransactionSizeLimit is the limit of operations per single transaction
 	TransactionSizeLimit = 256
 
-	// AttributeCacheSize is used to cache the attributes to avoid useless transactions
+	// AttributeCacheSize is used to cache the attributes to avoid updates
 	AttributeCacheSize = 32 * 1024
+
+	// CounterCacheSize is used to cache counter values to avoid updates
+	CounterCacheSize = 32 * 1024
 )
 
 // DatabaseClient is used to abstract the DB for testing
@@ -24,8 +26,8 @@ type DatabaseClient interface {
 	// UpsertDomain is used to register all the domain attributes and values
 	UpsertDomain(attributes map[string]map[string]struct{}) error
 
-	// UpsertCounter is used to register the counter value, updating if it exists
-	UpsertCounter(interval string, date time.Time, attributes map[string]string, count int64) error
+	// UpsertCounters is used to register the counter value, updating if it exists
+	UpsertCounters(updates []*ParsedKey) error
 }
 
 // PGDatabase provides a database client backed by PostgreSQL
@@ -37,7 +39,8 @@ type PGDatabase struct {
 	upsertDomain  *sql.Stmt
 	upsertCounter *sql.Stmt
 
-	attrCache *lru.TwoQueueCache
+	attrCache    *lru.TwoQueueCache
+	counterCache *lru.TwoQueueCache
 }
 
 // NewPGDatabase creates a PGDatabase connection with a URL string
@@ -49,13 +52,15 @@ func NewPGDatabase(logger hclog.Logger, connStr string) (*PGDatabase, error) {
 	}
 
 	// Create a new attribute cache
-	cache, _ := lru.New2Q(AttributeCacheSize)
+	attrCache, _ := lru.New2Q(AttributeCacheSize)
+	counterCache, _ := lru.New2Q(CounterCacheSize)
 
 	// Setup the DB connection
 	pg := &PGDatabase{
-		logger:    logger,
-		db:        db,
-		attrCache: cache,
+		logger:       logger,
+		db:           db,
+		attrCache:    attrCache,
+		counterCache: counterCache,
 	}
 
 	// Create the prepared queries
@@ -98,7 +103,7 @@ func (p *PGDatabase) DBInit() error {
 }
 
 func (p *PGDatabase) UpsertDomain(attributes map[string]map[string]struct{}) error {
-	// Flatten all the input pairs
+	// Flatten all the input pairs, skipping those in the cache
 	type tuple struct {
 		key, value string
 	}
@@ -162,7 +167,63 @@ func (p *PGDatabase) UpsertDomain(attributes map[string]map[string]struct{}) err
 	return nil
 }
 
-func (p *PGDatabase) UpsertCounter(interval string, date time.Time, attributes map[string]string, count int64) error {
+func (p *PGDatabase) UpsertCounters(counters []*ParsedKey) error {
+	// Filter to only the counters that have changes
+	var updates []*ParsedKey
+	for _, c := range counters {
+		lastCount, ok := p.counterCache.Get(c.Raw)
+		if !ok || lastCount.(int64) != c.Count {
+			updates = append(updates, c)
+		}
+	}
+
+	// Get a connection
+	ctx := context.Background()
+	conn, err := p.db.Conn(ctx)
+	if err != nil {
+		p.logger.Error("failed to get database connection", "error", err)
+		return err
+	}
+	defer conn.Close()
+
+	// Handle the inputs in chunks to limit transaction size
+	for n := len(updates); n > 0; {
+		var chunk []*ParsedKey
+		if n > TransactionSizeLimit {
+			chunk = updates[:TransactionSizeLimit]
+			updates = updates[TransactionSizeLimit:]
+		} else {
+			chunk = updates
+			updates = nil
+		}
+
+		// Create a transaction
+		tx, err := conn.BeginTx(ctx, nil)
+		if err != nil {
+			p.logger.Error("failed to start transaction", "error", err)
+			return err
+		}
+
+		// Do all the updates in the transaction
+		for _, c := range chunk {
+			if _, err := tx.Exec(upsertCounterSQL, c.Interval, c.Date, c.Attributes, c.Count); err != nil {
+				p.logger.Error("failed to update counter table", "key", c.Raw,
+					"count", c.Count, "error", err)
+				return err
+			}
+		}
+
+		// Commit all the updates
+		if tx.Commit(); err != nil {
+			p.logger.Error("failed to commit transaction", "error", err)
+			return err
+		}
+
+		// Add to the cache
+		for _, c := range chunk {
+			p.counterCache.Add(c.Raw, c.Count)
+		}
+	}
 	return nil
 }
 
@@ -182,7 +243,7 @@ const (
 
 	// createCounterSQL is used to create the counter table
 	createCounterSQL = `CREATE TABLE IF NOT EXISTS counters (
-	    id uuid DEFAULT uuid_generate_v4(),
+		id uuid DEFAULT uuid_generate_v4(),
 		interval varchar(16) NOT NULL,
 		date timestamp NOT NULL,
 		attributes jsonb NOT NULL,

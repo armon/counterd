@@ -67,12 +67,9 @@ func (s *Snapshotter) Run(now time.Time) error {
 	}
 
 	// Update all the DB counters
-	for _, c := range update {
-		if err := s.db.UpsertCounter(c.Interval, c.Date, c.Attributes,
-			c.Count); err != nil {
-			s.logger.Error("failed to update counter value", "counter", c.Raw, "error", err)
-			return err
-		}
+	if err := s.db.UpsertCounters(update); err != nil {
+		s.logger.Error("failed to update counter values", "error", err)
+		return err
 	}
 
 	// Collect all the domain attributes

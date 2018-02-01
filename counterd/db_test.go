@@ -47,30 +47,33 @@ func (m *MockDatabaseClient) UpsertDomain(attributes map[string]map[string]struc
 	return nil
 }
 
-func (m *MockDatabaseClient) UpsertCounter(interval string, date time.Time, attributes map[string]string, count int64) error {
+func (m *MockDatabaseClient) UpsertCounters(counters []*ParsedKey) error {
 	m.Lock()
 	defer m.Unlock()
 
-	// Create a counter
-	c := &MockCounter{
-		interval:   interval,
-		date:       date,
-		attributes: attributes,
-		count:      count,
-	}
-
-	// Scan for a matching counter. This is super inefficient but obviously correct.
-	for _, existing := range m.counters {
-		if existing.Equal(c) {
-			// Update the counter, but only monotonically
-			if c.count > existing.count {
-				existing.count = c.count
-			}
-			return nil
+OUTER:
+	for _, counter := range counters {
+		// Create a counter
+		c := &MockCounter{
+			interval:   counter.Interval,
+			date:       counter.Date,
+			attributes: counter.Attributes,
+			count:      counter.Count,
 		}
-	}
 
-	// No matching entry
-	m.counters = append(m.counters, c)
+		// Scan for a matching counter. This is super inefficient but obviously correct.
+		for _, existing := range m.counters {
+			if existing.Equal(c) {
+				// Update the counter, but only monotonically
+				if c.count > existing.count {
+					existing.count = c.count
+				}
+				continue OUTER
+			}
+		}
+
+		// No matching entry
+		m.counters = append(m.counters, c)
+	}
 	return nil
 }
