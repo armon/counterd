@@ -11,3 +11,5 @@ pg:
 psql:
 	psql -h 127.0.0.1 -p 5432 -U postgres
 
+integ:
+	INTEG=yes PG_ADDR="postgres://postgres@localhost/postgres?sslmode=disable" go test -v ./counterd/ -timeout=1s

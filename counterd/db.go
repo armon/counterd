@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 
 	hclog "github.com/hashicorp/go-hclog"
@@ -65,17 +66,9 @@ func NewPGDatabase(logger hclog.Logger, connStr string, prepare bool) (*PGDataba
 
 	// Create the prepared queries
 	if prepare {
-		stmt, err := db.Prepare(upsertDomainSQL)
-		if err != nil {
-			return nil, fmt.Errorf("failed to prepared query: %v", err)
+		if err := pg.Prepare(); err != nil {
+			return nil, err
 		}
-		pg.upsertDomain = stmt
-
-		stmt, err = db.Prepare(upsertCounterSQL)
-		if err != nil {
-			return nil, fmt.Errorf("failed to prepared query: %v", err)
-		}
-		pg.upsertCounter = stmt
 	}
 	return pg, nil
 }
@@ -130,6 +123,22 @@ func (p *PGDatabase) DBReset() error {
 	return nil
 }
 
+// Prepare is used to prepare the internal queries
+func (p *PGDatabase) Prepare() error {
+	stmt, err := p.db.Prepare(upsertDomainSQL)
+	if err != nil {
+		return fmt.Errorf("failed to prepared query: %v", err)
+	}
+	p.upsertDomain = stmt
+
+	stmt, err = p.db.Prepare(upsertCounterSQL)
+	if err != nil {
+		return fmt.Errorf("failed to prepared query: %v", err)
+	}
+	p.upsertCounter = stmt
+	return nil
+}
+
 func (p *PGDatabase) UpsertDomain(attributes map[string]map[string]struct{}) error {
 	// Flatten all the input pairs, skipping those in the cache
 	type tuple struct {
@@ -155,9 +164,9 @@ func (p *PGDatabase) UpsertDomain(attributes map[string]map[string]struct{}) err
 	defer conn.Close()
 
 	// Handle the inputs in chunks to limit transaction size
-	for n := len(tuples); n > 0; {
+	for len(tuples) > 0 {
 		var chunk []tuple
-		if n > TransactionSizeLimit {
+		if len(tuples) > TransactionSizeLimit {
 			chunk = tuples[:TransactionSizeLimit]
 			tuples = tuples[TransactionSizeLimit:]
 		} else {
@@ -216,9 +225,9 @@ func (p *PGDatabase) UpsertCounters(counters []*ParsedKey) error {
 	defer conn.Close()
 
 	// Handle the inputs in chunks to limit transaction size
-	for n := len(updates); n > 0; {
+	for len(updates) > 0 {
 		var chunk []*ParsedKey
-		if n > TransactionSizeLimit {
+		if len(updates) > TransactionSizeLimit {
 			chunk = updates[:TransactionSizeLimit]
 			updates = updates[TransactionSizeLimit:]
 		} else {
@@ -236,7 +245,12 @@ func (p *PGDatabase) UpsertCounters(counters []*ParsedKey) error {
 		// Do all the updates in the transaction
 		upsertStmt := tx.Stmt(p.upsertCounter)
 		for _, c := range chunk {
-			if _, err := upsertStmt.Exec(c.Interval, c.Date, c.Attributes, c.Count); err != nil {
+			attrBytes, err := json.Marshal(c.Attributes)
+			if err != nil {
+				p.logger.Error("failed to marshal attributes", "attributes", c.Attributes, "error", err)
+				return err
+			}
+			if _, err := upsertStmt.Exec(c.Interval, c.Date, attrBytes, c.Count); err != nil {
 				p.logger.Error("failed to update counter table", "key", c.Raw,
 					"count", c.Count, "error", err)
 				return err
@@ -259,10 +273,10 @@ func (p *PGDatabase) UpsertCounters(counters []*ParsedKey) error {
 
 const (
 	// upsertDomainSQL is used to upsert values into the domain table
-	upsertDomainSQL = `INSERT INTO attributes_domain VALUES (?, ?) ON CONFLICT DO NOTHING;`
+	upsertDomainSQL = `INSERT INTO attributes_domain VALUES ($1, $2) ON CONFLICT DO NOTHING;`
 
 	// upsertCounterSQL is used to upsert into the counters table
-	upsertCounterSQL = `INSERT INTO counters (interval, date, attributes, count) VALUES (?, ?, ?, ?) ON CONFLICT (interval, date, attributes) DO UPDATE SET count = GREATEST(EXCLUDED.count, counters.count);`
+	upsertCounterSQL = `INSERT INTO counters (interval, date, attributes, count) VALUES ($1, $2, $3, $4) ON CONFLICT (interval, date, attributes) DO UPDATE SET count = GREATEST(EXCLUDED.count, counters.count);`
 
 	// createExtension is used to greate the UUID extension if not available
 	createExtension = `CREATE EXTENSION IF NOT EXISTS "uuid-ossp";`
