@@ -6,8 +6,11 @@ import (
 	"net"
 	"net/http"
 	"strings"
+	"sync"
+	"time"
 
 	hclog "github.com/hashicorp/go-hclog"
+	"github.com/robfig/cron"
 )
 
 type ServerCommand struct{}
@@ -71,6 +74,37 @@ func (s *ServerCommand) Run(args []string) int {
 	if err != nil {
 		hclog.Default().Error("Failed to setup database connection", "error", err)
 		return 1
+	}
+
+	// Check if we have a cron setup
+	if config.Snapshot.Cron != "" {
+		// Create the snapshotter
+		snap := &Snapshotter{
+			config: config,
+			logger: hclog.Default().Named("snapshotter"),
+			client: client,
+			db:     pg,
+		}
+		var snapshotLock sync.Mutex
+
+		// Setup a cron
+		cron := cron.New()
+		err := cron.AddFunc(config.Snapshot.Cron, func() {
+			// Prevent concurrent snapshots if the cron is too frequent
+			snapshotLock.Lock()
+			defer snapshotLock.Unlock()
+
+			// Run the snapshot at the current time
+			if err := snap.Run(time.Now().UTC()); err != nil {
+				hclog.Default().Error("Failed to snapshot", "error", err)
+			}
+		})
+		if err != nil {
+			hclog.Default().Error("Failed to setup snapshot cron", "error", err)
+			return 1
+		}
+		cron.Start()
+		hclog.Default().Info("Snapshot cron initialized", "cron", config.Snapshot.Cron)
 	}
 
 	// Setup the endpoint handlers

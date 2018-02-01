@@ -24,6 +24,10 @@ type Config struct {
 
 // SnapshotConfig has snapshotting configuration
 type SnapshotConfig struct {
+	// Cron can be configured to have the server invoke snapshots periodically.
+	// This is independent from invoking the snapshot command.
+	Cron string `hcl:"cron"`
+
 	// UpdateThreshold is how far back we scan for relevant updates.
 	// This prevents old counters from being updated. This should be relative to the
 	// snapshot rate. For example, if you snapshot hourly, consider a two hour update threshold.
