@@ -107,6 +107,29 @@ func (p *PGDatabase) DBInit() error {
 	return nil
 }
 
+// DBReset is used to drop the tables/indexes
+func (p *PGDatabase) DBReset() error {
+	// Get a connection
+	ctx := context.Background()
+	conn, err := p.db.Conn(ctx)
+	if err != nil {
+		p.logger.Error("failed to get database connection", "error", err)
+		return err
+	}
+	defer conn.Close()
+
+	// Drop the tables
+	if _, err := conn.ExecContext(ctx, dropDomainSQL); err != nil {
+		p.logger.Error("failed to drop domain table", "error", err)
+		return err
+	}
+	if _, err := conn.ExecContext(ctx, dropCounterSQL); err != nil {
+		p.logger.Error("failed to drop counter table", "error", err)
+		return err
+	}
+	return nil
+}
+
 func (p *PGDatabase) UpsertDomain(attributes map[string]map[string]struct{}) error {
 	// Flatten all the input pairs, skipping those in the cache
 	type tuple struct {
@@ -150,8 +173,9 @@ func (p *PGDatabase) UpsertDomain(attributes map[string]map[string]struct{}) err
 		}
 
 		// Do all the updates in the transaction
+		upsertStmt := tx.Stmt(p.upsertDomain)
 		for _, tuple := range chunk {
-			if _, err := tx.Exec(upsertDomainSQL, tuple.key, tuple.value); err != nil {
+			if _, err := upsertStmt.Exec(tuple.key, tuple.value); err != nil {
 				p.logger.Error("failed to update domain table", "key", tuple.key,
 					"value", tuple.value, "error", err)
 				return err
@@ -210,8 +234,9 @@ func (p *PGDatabase) UpsertCounters(counters []*ParsedKey) error {
 		}
 
 		// Do all the updates in the transaction
+		upsertStmt := tx.Stmt(p.upsertCounter)
 		for _, c := range chunk {
-			if _, err := tx.Exec(upsertCounterSQL, c.Interval, c.Date, c.Attributes, c.Count); err != nil {
+			if _, err := upsertStmt.Exec(c.Interval, c.Date, c.Attributes, c.Count); err != nil {
 				p.logger.Error("failed to update counter table", "key", c.Raw,
 					"count", c.Count, "error", err)
 				return err
@@ -259,4 +284,10 @@ const (
 		PRIMARY KEY (id),
 		UNIQUE (interval, date, attributes)
 	);`
+
+	// dropDomainSQL is used to drop the domain attributes table
+	dropDomainSQL = `DROP TABLE IF EXISTS attributes_domain;`
+
+	// dropCounterSQL is used to drop the counters table
+	dropCounterSQL = `DROP TABLE IF EXISTS counters;`
 )
