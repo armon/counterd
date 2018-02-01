@@ -47,12 +47,20 @@ func (s *SnapshotCommand) Run(args []string) int {
 		hclog.Default().Error("Failed to parse configuration file", "error", err)
 		return 1
 	}
-	hclog.Default().Info("Connecting to postgresql", "addr", config.PGAddress)
 
 	// Setup the redis pool
+	hclog.Default().Info("Connecting to redis", "addr", config.RedisAddress)
 	client, err := NewPooledClient(config.RedisAddress)
 	if err != nil {
 		hclog.Default().Error("Failed to setup redis connection", "error", err)
+		return 1
+	}
+
+	// Attempt to connect to the database
+	hclog.Default().Info("Connecting to postgresql", "addr", config.PGAddress)
+	pg, err := NewPGDatabase(hclog.Default().Named("postgresql"), config.PGAddress, true)
+	if err != nil {
+		hclog.Default().Error("Failed to setup database connection", "error", err)
 		return 1
 	}
 
@@ -61,6 +69,7 @@ func (s *SnapshotCommand) Run(args []string) int {
 		config: config,
 		logger: hclog.Default().Named("snapshotter"),
 		client: client,
+		db:     pg,
 	}
 
 	// Run the snapshotter now

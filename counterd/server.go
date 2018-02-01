@@ -58,9 +58,18 @@ func (s *ServerCommand) Run(args []string) int {
 	hclog.Default().Info("Listener started", "address", config.ListenAddress)
 
 	// Setup the redis pool
+	hclog.Default().Info("Connecting to redis", "addr", config.RedisAddress)
 	client, err := NewPooledClient(config.RedisAddress)
 	if err != nil {
 		hclog.Default().Error("Failed to setup redis connection", "error", err)
+		return 1
+	}
+
+	// Attempt to connect to the database
+	hclog.Default().Info("Connecting to postgresql", "addr", config.PGAddress)
+	pg, err := NewPGDatabase(hclog.Default().Named("postgresql"), config.PGAddress, true)
+	if err != nil {
+		hclog.Default().Error("Failed to setup database connection", "error", err)
 		return 1
 	}
 
@@ -68,6 +77,7 @@ func (s *ServerCommand) Run(args []string) int {
 	api := &APIHandler{
 		logger: hclog.Default().Named("api"),
 		client: client,
+		db:     pg,
 	}
 
 	// Setup the HTTP handler

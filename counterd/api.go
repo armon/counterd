@@ -31,6 +31,7 @@ const (
 type APIHandler struct {
 	logger hclog.Logger
 	client RedisClient
+	db     DatabaseClient
 }
 
 // Ingress is used to take events and update the appropriate redis keys
