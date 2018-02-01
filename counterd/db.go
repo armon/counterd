@@ -1,11 +1,22 @@
 package main
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"time"
 
+	hclog "github.com/hashicorp/go-hclog"
+	lru "github.com/hashicorp/golang-lru"
 	_ "github.com/lib/pq"
+)
+
+const (
+	// TransactionSizeLimit is the limit of operations per single transaction
+	TransactionSizeLimit = 256
+
+	// AttributeCacheSize is used to cache the attributes to avoid useless transactions
+	AttributeCacheSize = 32 * 1024
 )
 
 // DatabaseClient is used to abstract the DB for testing
@@ -19,24 +30,32 @@ type DatabaseClient interface {
 
 // PGDatabase provides a database client backed by PostgreSQL
 type PGDatabase struct {
-	db *sql.DB
+	logger hclog.Logger
+	db     *sql.DB
 
 	// Prepared queries we store
 	upsertDomain  *sql.Stmt
 	upsertCounter *sql.Stmt
+
+	attrCache *lru.TwoQueueCache
 }
 
 // NewPGDatabase creates a PGDatabase connection with a URL string
 // "postgres://pqgotest:password@localhost/pqgotest?sslmode=verify-full"
-func NewPGDatabase(connStr string) (*PGDatabase, error) {
+func NewPGDatabase(logger hclog.Logger, connStr string) (*PGDatabase, error) {
 	db, err := sql.Open("postgres", connStr)
 	if err != nil {
 		return nil, err
 	}
 
+	// Create a new attribute cache
+	cache, _ := lru.New2Q(AttributeCacheSize)
+
 	// Setup the DB connection
 	pg := &PGDatabase{
-		db: db,
+		logger:    logger,
+		db:        db,
+		attrCache: cache,
 	}
 
 	// Create the prepared queries
@@ -53,6 +72,98 @@ func NewPGDatabase(connStr string) (*PGDatabase, error) {
 	pg.upsertCounter = stmt
 
 	return pg, nil
+}
+
+// DBInit is used to initialize the database and create tables/indexes
+func (p *PGDatabase) DBInit() error {
+	// Get a connection
+	ctx := context.Background()
+	conn, err := p.db.Conn(ctx)
+	if err != nil {
+		p.logger.Error("failed to get database connection", "error", err)
+		return err
+	}
+	defer conn.Close()
+
+	// Create the tables
+	if _, err := conn.ExecContext(ctx, createDomainSQL); err != nil {
+		p.logger.Error("failed to create domain table", "error", err)
+		return err
+	}
+	if _, err := conn.ExecContext(ctx, createCounterSQL); err != nil {
+		p.logger.Error("failed to create counter table", "error", err)
+		return err
+	}
+	return nil
+}
+
+func (p *PGDatabase) UpsertDomain(attributes map[string]map[string]struct{}) error {
+	// Flatten all the input pairs
+	type tuple struct {
+		key, value string
+	}
+	var tuples []tuple
+	for attr, values := range attributes {
+		for val := range values {
+			tuple := tuple{attr, val}
+			if !p.attrCache.Contains(tuple) {
+				tuples = append(tuples, tuple)
+			}
+		}
+	}
+
+	// Get a connection
+	ctx := context.Background()
+	conn, err := p.db.Conn(ctx)
+	if err != nil {
+		p.logger.Error("failed to get database connection", "error", err)
+		return err
+	}
+	defer conn.Close()
+
+	// Handle the inputs in chunks to limit transaction size
+	for n := len(tuples); n > 0; {
+		var chunk []tuple
+		if n > TransactionSizeLimit {
+			chunk = tuples[:TransactionSizeLimit]
+			tuples = tuples[TransactionSizeLimit:]
+		} else {
+			chunk = tuples
+			tuples = nil
+		}
+
+		// Create a transaction
+		tx, err := conn.BeginTx(ctx, nil)
+		if err != nil {
+			p.logger.Error("failed to start transaction", "error", err)
+			return err
+		}
+
+		// Do all the updates in the transaction
+		for _, tuple := range chunk {
+			if _, err := tx.Exec(upsertDomainSQL, tuple.key, tuple.value); err != nil {
+				p.logger.Error("failed to update domain table", "key", tuple.key,
+					"value", tuple.value, "error", err)
+				return err
+			}
+		}
+
+		// Commit all the updates
+		if tx.Commit(); err != nil {
+			p.logger.Error("failed to commit transaction", "error", err)
+			return err
+		}
+
+		// Add to the cache
+		for _, tuple := range chunk {
+			p.attrCache.Add(tuple, struct{}{})
+		}
+	}
+	return nil
+}
+
+func (p *PGDatabase) UpsertCounter(interval string, date time.Time, attributes map[string]string, count int64) error {
+	return nil
 }
 
 const (
