@@ -48,9 +48,10 @@ func (s *DBInitCommand) Run(args []string) int {
 	hclog.Default().Info("Connecting to postgresql", "addr", config.PGAddress)
 
 	// Attempt to connect to the database
-	pg, err := NewPGDatabase(hclog.Default().Named("postgresql"), config.PGAddress)
+	pg, err := NewPGDatabase(hclog.Default().Named("postgresql"), config.PGAddress, false)
 	if err != nil {
 		hclog.Default().Error("Failed to setup database connection", "error", err)
+		return 1
 	}
 
 	// Attempt to initialize

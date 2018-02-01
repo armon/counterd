@@ -45,7 +45,7 @@ type PGDatabase struct {
 
 // NewPGDatabase creates a PGDatabase connection with a URL string
 // "postgres://pqgotest:password@localhost/pqgotest?sslmode=verify-full"
-func NewPGDatabase(logger hclog.Logger, connStr string) (*PGDatabase, error) {
+func NewPGDatabase(logger hclog.Logger, connStr string, prepare bool) (*PGDatabase, error) {
 	db, err := sql.Open("postgres", connStr)
 	if err != nil {
 		return nil, err
@@ -64,18 +64,19 @@ func NewPGDatabase(logger hclog.Logger, connStr string) (*PGDatabase, error) {
 	}
 
 	// Create the prepared queries
-	stmt, err := db.Prepare(upsertDomainSQL)
-	if err != nil {
-		return nil, fmt.Errorf("failed to prepared query: %v", err)
-	}
-	pg.upsertDomain = stmt
+	if prepare {
+		stmt, err := db.Prepare(upsertDomainSQL)
+		if err != nil {
+			return nil, fmt.Errorf("failed to prepared query: %v", err)
+		}
+		pg.upsertDomain = stmt
 
-	stmt, err = db.Prepare(upsertCounterSQL)
-	if err != nil {
-		return nil, fmt.Errorf("failed to prepared query: %v", err)
+		stmt, err = db.Prepare(upsertCounterSQL)
+		if err != nil {
+			return nil, fmt.Errorf("failed to prepared query: %v", err)
+		}
+		pg.upsertCounter = stmt
 	}
-	pg.upsertCounter = stmt
-
 	return pg, nil
 }
 
@@ -91,6 +92,10 @@ func (p *PGDatabase) DBInit() error {
 	defer conn.Close()
 
 	// Create the tables
+	if _, err := conn.ExecContext(ctx, createExtension); err != nil {
+		p.logger.Error("failed to create UUID extension", "error", err)
+		return err
+	}
 	if _, err := conn.ExecContext(ctx, createDomainSQL); err != nil {
 		p.logger.Error("failed to create domain table", "error", err)
 		return err
@@ -233,6 +238,9 @@ const (
 
 	// upsertCounterSQL is used to upsert into the counters table
 	upsertCounterSQL = `INSERT INTO counters (interval, date, attributes, count) VALUES (?, ?, ?, ?) ON CONFLICT (interval, date, attributes) DO UPDATE SET count = GREATEST(EXCLUDED.count, counters.count);`
+
+	// createExtension is used to greate the UUID extension if not available
+	createExtension = `CREATE EXTENSION IF NOT EXISTS "uuid-ossp";`
 
 	// createDomainSQL is used to create the domain table
 	createDomainSQL = `CREATE TABLE IF NOT EXISTS attributes_domain (

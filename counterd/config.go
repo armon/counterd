@@ -42,7 +42,7 @@ func DefaultConfig() *Config {
 	return &Config{
 		ListenAddress: "127.0.0.1:8001",
 		RedisAddress:  "127.0.0.1:6379",
-		PGAddress:     "127.0.0.1:5432",
+		PGAddress:     "postgres://postgres@localhost/postgres?sslmode=disable",
 		Snapshot: &SnapshotConfig{
 			UpdateThreshold: 3 * time.Hour,
 			DeleteThreshold: 3 * 30 * 24 * time.Hour,
