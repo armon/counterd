@@ -11,6 +11,9 @@ func main() {
 	c := cli.NewCLI("counterd", "0.1.0")
 	c.Args = os.Args[1:]
 	c.Commands = map[string]cli.CommandFactory{
+		"dbinit": func() (cli.Command, error) {
+			return &DBInitCommand{}, nil
+		},
 		"server": func() (cli.Command, error) {
 			return &ServerCommand{}, nil
 		},
