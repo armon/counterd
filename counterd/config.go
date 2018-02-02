@@ -8,6 +8,16 @@ import (
 	"github.com/hashicorp/hcl"
 )
 
+const (
+	// DefaultUpdateThreshold is the default threshold we update
+	// counters if no setting is specified
+	DefaultUpdateThreshold = 3 * time.Hour // 3 Hours
+
+	// DefaultDeleteThreshold is the default threshold we delete
+	// counters if no setting is specified
+	DefaultDeleteThreshold = 3 * 31 * 24 * time.Hour // 31 Days
+)
+
 // Config is the configuration for the server and snapshot comments
 type Config struct {
 	// ListenAddress is the HTTP listener address
@@ -73,8 +83,8 @@ func DefaultConfig() *Config {
 		RedisAddress:  "127.0.0.1:6379",
 		PGAddress:     "postgres://postgres@localhost/postgres?sslmode=disable",
 		Snapshot: &SnapshotConfig{
-			UpdateThreshold: 3 * time.Hour,
-			DeleteThreshold: 3 * 30 * 24 * time.Hour,
+			UpdateThreshold: DefaultUpdateThreshold,
+			DeleteThreshold: DefaultDeleteThreshold,
 		},
 		Auth: &AuthConfig{
 			Required: false,
@@ -109,6 +119,14 @@ func ParseConfig(raw string) (*Config, error) {
 			return nil, fmt.Errorf("failed to parse duration: %v", err)
 		}
 		config.Snapshot.DeleteThreshold = dur
+	}
+
+	// Ensure defaults are provided
+	if config.Snapshot.UpdateThreshold == 0 {
+		config.Snapshot.UpdateThreshold = DefaultUpdateThreshold
+	}
+	if config.Snapshot.DeleteThreshold == 0 {
+		config.Snapshot.DeleteThreshold = DefaultDeleteThreshold
 	}
 
 	// Sort the attribute whitelist and blacklist
