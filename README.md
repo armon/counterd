@@ -117,3 +117,30 @@ attributes {
 }
 ```
 
+# API
+
+The counterd daemon serves an REST API over HTTP. The following endpoints are documented below.
+
+## /v1/ingress
+
+This endpoint is used to ingess a new event. It supports the `PUT` method and expects a JSON object as the request body, matching the format of:
+
+```json
+{
+    "id": "3D8125BD-BEE4-4E90-A15F-81F42C380C55",
+    "date": "2018-01-31T01:12:53Z",
+    "attributes": {
+        "foo": "bar",
+        "zip": "zap"
+    }
+}
+```
+
+The `id` field must uniquely identify the event. The `attributes` can be an arbitrary set of key/value pairs, but cannot use the reserved colon (":") value. The `date` can be omitted and the server will substitute in the current time.
+
+The server will return a 200 response code and no body on success.
+
+# Caveats
+
+The counter structure used means there is a key in redis and a row in the database for every permutation of attributes. If you have a very large domain of attributes (lots of keys or values) then you should ensure Redis has enough memory to store all the counters and that your database is appropriately sized.
+
