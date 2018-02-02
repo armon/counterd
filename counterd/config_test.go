@@ -55,3 +55,17 @@ attributes {
 	black := []string{"ip", "src"}
 	assert.Equal(t, black, config.Attributes.Blacklist)
 }
+
+func TestParseConfig_Partial(t *testing.T) {
+	input := `
+snapshot {
+	update_threshold = "24h"
+}
+	`
+
+	config, err := ParseConfig(input)
+	assert.Nil(t, err)
+
+	assert.Equal(t, 24*time.Hour, config.Snapshot.UpdateThreshold)
+	assert.Equal(t, 3*30*24*time.Hour, config.Snapshot.DeleteThreshold)
+}
