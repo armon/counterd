@@ -50,6 +50,11 @@ func NewPooledClient(addr string) (*PooledClient, error) {
 }
 
 func (p *PooledClient) UpdateKeys(keys []string, id string) error {
+	// Fast path on no-op
+	if len(keys) == 0 {
+		return nil
+	}
+
 	// Get a connection to redis
 	c := p.pool.Get()
 	defer c.Close()
@@ -105,6 +110,11 @@ func (p *PooledClient) ListKeys() ([]string, error) {
 }
 
 func (p *PooledClient) GetCounts(keys []string) ([]int64, error) {
+	// Fast path on no-op
+	if len(keys) == 0 {
+		return nil, nil
+	}
+
 	// Get a connection to redis
 	c := p.pool.Get()
 	defer c.Close()
@@ -130,6 +140,11 @@ func (p *PooledClient) GetCounts(keys []string) ([]int64, error) {
 }
 
 func (p *PooledClient) DeleteKeys(keys []string) error {
+	// Fast path on no-op
+	if len(keys) == 0 {
+		return nil
+	}
+
 	// Get a connection to redis
 	c := p.pool.Get()
 	defer c.Close()

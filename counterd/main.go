@@ -17,6 +17,9 @@ func main() {
 		"server": func() (cli.Command, error) {
 			return &ServerCommand{}, nil
 		},
+		"sim": func() (cli.Command, error) {
+			return &SimCommand{}, nil
+		},
 		"snapshot": func() (cli.Command, error) {
 			return &SnapshotCommand{}, nil
 		},
