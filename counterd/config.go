@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"os"
 	"sort"
 	"time"
 
@@ -21,12 +22,15 @@ const (
 // Config is the configuration for the server and snapshot comments
 type Config struct {
 	// ListenAddress is the HTTP listener address
+	// If the PORT environment is set, "0.0.0.0:$PORT" is used.
 	ListenAddress string `hcl:"listen_address"`
 
 	// RedisAddress is the address of the redis server
+	// If the REDIS_URL environment variable is set, that will be used.
 	RedisAddress string `hcl:"redis_address"`
 
 	// PGAddress is the address of the postgresql server
+	// If the PG_URL environment variable is set, that will be used.
 	PGAddress string `hcl:"postgresql_address"`
 
 	// Snapshot has the snapshot specific configuration
@@ -78,7 +82,7 @@ type SnapshotConfig struct {
 
 // DefaultConfig returns the default configuration
 func DefaultConfig() *Config {
-	return &Config{
+	defConf := &Config{
 		ListenAddress: "127.0.0.1:8001",
 		RedisAddress:  "127.0.0.1:6379",
 		PGAddress:     "postgres://postgres@localhost/postgres?sslmode=disable",
@@ -95,6 +99,18 @@ func DefaultConfig() *Config {
 			Blacklist: []string{},
 		},
 	}
+
+	// Check for environment variables
+	if raw := os.Getenv("PORT"); raw != "" {
+		defConf.ListenAddress = "0.0.0.0:" + raw
+	}
+	if raw := os.Getenv("REDIS_URL"); raw != "" {
+		defConf.RedisAddress = raw
+	}
+	if raw := os.Getenv("PG_URL"); raw != "" {
+		defConf.PGAddress = raw
+	}
+	return defConf
 }
 
 // ParseConfig is used to parse the configuration
