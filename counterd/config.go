@@ -58,6 +58,7 @@ type AuthConfig struct {
 	Required bool `hcl:"required"`
 
 	// Tokens are the allowed bearer tokens via Authorization header
+	// If the ACL_TOKEN environment variable is set, that will be used and Required set to true.
 	Tokens []string `hcl:"tokens"`
 }
 
@@ -109,6 +110,10 @@ func DefaultConfig() *Config {
 	}
 	if raw := os.Getenv("PG_URL"); raw != "" {
 		defConf.PGAddress = raw
+	}
+	if raw := os.Getenv("ACL_TOKEN"); raw != "" {
+		defConf.Auth.Required = true
+		defConf.Auth.Tokens = []string{raw}
 	}
 	return defConf
 }
