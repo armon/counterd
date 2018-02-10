@@ -5,6 +5,9 @@ test:
 build:
 	go build -o bin/counterd ./counterd/
 
+build-linux:
+	cd counterd/; GOOS=linux GOARCH=amd64 go build -o ../bin/counterd .
+
 pg:
 	docker run -p 5432:5432 -d postgres:9.6
 
