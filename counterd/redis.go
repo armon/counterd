@@ -41,7 +41,7 @@ func NewPooledClient(addr string) (*PooledClient, error) {
 	pool := &redis.Pool{
 		MaxIdle:     3,
 		IdleTimeout: 30 * time.Second,
-		Dial:        func() (redis.Conn, error) { return redis.Dial("tcp", addr) },
+		Dial:        func() (redis.Conn, error) { return redis.DialURL(addr) },
 	}
 	pc := &PooledClient{
 		pool: pool,

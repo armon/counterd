@@ -67,5 +67,5 @@ snapshot {
 	assert.Nil(t, err)
 
 	assert.Equal(t, 24*time.Hour, config.Snapshot.UpdateThreshold)
-	assert.Equal(t, 3*30*24*time.Hour, config.Snapshot.DeleteThreshold)
+	assert.Equal(t, 3*31*24*time.Hour, config.Snapshot.DeleteThreshold)
 }
